@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Run Status</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 2em;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th,
+        td {
+            padding: 0.5em;
+            border: 1px solid #ccc;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #eee;
+        }
+
+        .pagination {
+            margin-top: 1em;
+        }
+
+        .pagination button {
+            margin: 0 0.2em;
+        }
+
+        .summary-table {
+            margin-bottom: 2em;
+        }
+
+        .summary-table select {
+            font-size: 1em;
+        }
+
+        .highlight {
+            animation: highlightRow 2s;
+            background: #ffe066 !important;
+        }
+
+        @keyframes highlightRow {
+            from {
+                background: #ffe066;
+            }
+
+            to {
+                background: inherit;
+            }
+        }
+
+        .navbar {
+            width: 100%;
+            background: #222;
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.7em 1.5em;
+            margin-bottom: 2em;
+            border-radius: 0.4em;
+            box-sizing: border-box;
+        }
+
+        .nav-title {
+            font-weight: bold;
+            font-size: 1.2em;
+            letter-spacing: 1px;
+        }
+
+        .runner-status {
+            font-size: 1.1em;
+            font-weight: bold;
+            padding: 0.3em 1em;
+            border-radius: 1em;
+            background: #444;
+            color: #fff;
+            display: inline-block;
+        }
+
+        .runner-processing {
+            background: #ffe066;
+            color: #b8860b;
+        }
+
+        .runner-queued {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .runner-idle {
+            background: #d4f8e8;
+            color: #218838;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navbar">
+        <span class="nav-title"><a href="/" style="color:inherit;text-decoration:none;">DAQ Automator</a></span>
+        <span>
+            <a href="/register_tray_page" style="color:#ffe066; text-decoration:underline; margin-right:1.5em;">Register Tray</a>
+            <a href="/display_trays_page" style="color:#ffe066; text-decoration:underline; margin-right:1.5em;">Display Trays</a>
+            <span id="runnerStatus" class="runner-status">Runner: <span>Idle</span></span>
+        </span>
+    </div>
+    <h1>Latest Runs</h1>
+    <div class="summary-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Select Tray</th>
+                    <th>lyso</th>
+                    <th>tp</th>
+                    <th>disc</th>
+                    <th>iv</th>
+                    <th>tec</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        <select id="traySelect"></select>
+                    </td>
+                    <td id="lyso_run"><a href="#">-</a></td>
+                    <td id="tp_run"><a href="#">-</a></td>
+                    <td id="disc_run"><a href="#">-</a></td>
+                    <td id="iv_run"><a href="#">-</a></td>
+                    <td id="tec_run"><a href="#">-</a></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h1>Task Status</h1>
+    <div id="filterSection" style="margin-bottom:1em; display: flex; gap: 1em; align-items: center;">
+        <label>
+            Tray:
+            <select id="filterTray">
+                <option value="">All</option>
+            </select>
+        </label>
+        <label>
+            RU:
+            <select id="filterRU">
+                <option value="">All</option>
+            </select>
+        </label>
+        <label>
+            Type:
+            <select id="filterType">
+                <option value="">All</option>
+                <option value="lyso">lyso</option>
+                <option value="tp">tp</option>
+                <option value="disc">disc</option>
+                <option value="iv">iv</option>
+                <option value="tec">tec</option>
+            </select>
+        </label>
+        <label>
+            Date:
+            <input type="datetime-local" id="filterDateFrom"> -
+            <input type="datetime-local" id="filterDateTo">
+        </label>
+        <button id="applyFiltersBtn">Apply</button>
+        <button id="clearFiltersBtn" type="button">Clear</button>
+    </div>
+
+
+    <table id="statusTable">
+        <thead>
+            <tr>
+                <th id="selectAllTh" style="cursor:pointer;">
+                    <input type="checkbox" id="selectAllCheckbox">
+                </th>
+                <th>Tray</th>
+                <th id="sortRU" style="cursor:pointer;">RU</th>
+                <th>Type</th>
+                <th id="sortRun" style="cursor:pointer;">Run #</th>
+                <th>Status</th>
+                <th>Links</th>
+                <th id="sortDate" style="cursor:pointer;">Date</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <button id="setQueuedBtn">Back to Queued</button>
+    <button id="deleteSelectedBtn">Delete Selected</button>
+
+    <div class="pagination" id="pagination"></div>
+    <script>
+        let currentPage = 1;
+        const perPage = 25;
+        let sortBy = "date";
+        let sortDir = "desc";
+
+        let applyFilter = false;
+        let filterTray = "";
+        let filterRU = "";
+        let filterType = "";
+        let filterDateFrom = "";
+        let filterDateTo = "";
+
+        // Fetch all trays for the select dropdown
+        async function fetchTrays() {
+            const res = await fetch('/status?page=1&per_page=100');
+            const data = await res.json();
+            const trays = [...new Set(data.jobs.map(j => j.Tray))].sort();
+            const select = document.getElementById("traySelect");
+            select.innerHTML = "";
+            trays.forEach(tray => {
+                const opt = document.createElement("option");
+                opt.value = tray;
+                opt.textContent = tray;
+                select.appendChild(opt);
+            });
+            if (trays.length > 0) {
+                select.value = trays[0];
+                updateSummaryTable(trays[0]);
+            }
+            select.onchange = () => updateSummaryTable(select.value);
+        }
+
+        // Fetch and update the summary table for the selected tray
+        async function updateSummaryTable(tray) {
+            const res = await fetch(`/latest_runs_by_tray?tray=${encodeURIComponent(tray)}`);
+            const data = await res.json();
+
+            function setLink(type, cellId) {
+                const cell = document.getElementById(cellId);
+                const a = cell.querySelector('a');
+                if (data[type] && data[type].id) {
+                    a.textContent = data[type].run_number;
+                    a.style.pointerEvents = "auto";
+                    a.style.color = "#0074d9";
+                    a.href = "#";
+                    a.onclick = (e) => {
+                        e.preventDefault();
+                        scrollToJob(data[type].id);
+                    };
+                } else {
+                    a.textContent = "-";
+                    a.style.pointerEvents = "none";
+                    a.style.color = "#888";
+                    a.removeAttribute("href");
+                    a.onclick = null;
+                }
+            }
+
+            setLink("lyso", "lyso_run");
+            setLink("tp", "tp_run");
+            setLink("disc", "disc_run");
+            setLink("iv", "iv_run");
+            setLink("tec", "tec_run");
+        }
+
+        // Uncheck all checkboxes and reset "Select All"
+        function clearSelection() {
+            document.querySelectorAll(".job-checkbox").forEach(cb => cb.checked = false);
+            const selectAll = document.getElementById("selectAllCheckbox");
+            if (selectAll) selectAll.checked = false;
+        }
+
+        document.getElementById("setQueuedBtn").onclick = async function () {
+            const checked = Array.from(document.querySelectorAll(".job-checkbox:checked"));
+            if (checked.length === 0) return;
+            if (!confirm(`Set ${checked.length} jobs to queued?`)) return;
+            const ids = checked.map(cb => parseInt(cb.value));
+            clearSelection(); // <-- move this before updateTable
+            await fetch("/jobs/set_queued", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(ids)
+            });
+            updateTable(currentPage);
+            fetchTrays();
+        };
+
+        document.getElementById("deleteSelectedBtn").onclick = async function () {
+            const checked = Array.from(document.querySelectorAll(".job-checkbox:checked"));
+            if (checked.length === 0) return;
+            if (!confirm(`Delete ${checked.length} jobs?`)) return;
+            const ids = checked.map(cb => parseInt(cb.value));
+            clearSelection(); // <-- move this before updateTable
+            await fetch("/jobs", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(ids)
+            });
+            updateTable(currentPage);
+            fetchTrays();
+        };
+
+        document.getElementById("selectAllCheckbox").onclick = function () {
+            const checked = this.checked;
+            document.querySelectorAll(".job-checkbox").forEach(cb => {
+                cb.checked = checked;
+            });
+        };
+
+        document.getElementById("selectAllTh").onclick = function (e) {
+            if (e.target.tagName !== 'INPUT') {
+                const cb = document.getElementById("selectAllCheckbox");
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('click'));
+            }
+        };
+
+        // Filter functionality
+        async function populateFilterSelects() {
+            // Fetch all jobs (or just the first page with a large per_page)
+            const res = await fetch('/status?page=1&per_page=9999');
+            const data = await res.json();
+
+            // Populate Tray select
+            const trays = [...new Set(data.jobs.map(j => j.Tray))].sort();
+            const traySelect = document.getElementById("filterTray");
+            traySelect.innerHTML = '<option value="">All</option>';
+            trays.forEach(tray => {
+                const opt = document.createElement("option");
+                opt.value = tray;
+                opt.textContent = tray;
+                traySelect.appendChild(opt);
+            });
+
+            // Populate RU select
+            const rus = [...new Set(data.jobs.map(j => j.RU))].sort((a, b) => a - b);
+            const ruSelect = document.getElementById("filterRU");
+            ruSelect.innerHTML = '<option value="">All</option>';
+            rus.forEach(ru => {
+                const opt = document.createElement("option");
+                opt.value = ru;
+                opt.textContent = ru;
+                ruSelect.appendChild(opt);
+            });
+        }
+        document.getElementById("filterTray").onchange = function () {
+            if (applyFilter) {
+                filterTray = this.value;
+            }
+        };
+        document.getElementById("filterRU").onchange = function () {
+            if (applyFilter) {
+                filterRU = this.value;
+            }
+        };
+        document.getElementById("filterType").onchange = function () {
+            if (applyFilter) {
+                filterType = this.value;
+            }
+        };
+        document.getElementById("filterDateFrom").onchange = function () {
+            if (applyFilter) {
+                filterDateFrom = this.value;
+            }
+        };
+        document.getElementById("filterDateTo").onchange = function () {
+            if (applyFilter) {
+                filterDateTo = this.value;
+            }
+        };
+        document.getElementById("applyFiltersBtn").onclick = function () {
+            filterTray = document.getElementById("filterTray").value;
+            filterRU = document.getElementById("filterRU").value;
+            filterType = document.getElementById("filterType").value;
+            filterDateFrom = document.getElementById("filterDateFrom").value;
+            filterDateTo = document.getElementById("filterDateTo").value;
+            currentPage = 1;
+            updateTable(1);
+        };
+        document.getElementById("clearFiltersBtn").onclick = function () {
+            document.getElementById("filterTray").value = "";
+            document.getElementById("filterRU").value = "";
+            document.getElementById("filterType").value = "";
+            document.getElementById("filterDateFrom").value = "";
+            document.getElementById("filterDateTo").value = "";
+            filterTray = "";
+            filterRU = "";
+            filterType = "";
+            filterDateFrom = "";
+            filterDateTo = "";
+            currentPage = 1;
+            updateTable(1);
+        };
+
+        // Sorting functionality
+        function updateSortIndicators() {
+            // Clear all indicators
+            document.getElementById("sortRU").innerHTML = "RU";
+            document.getElementById("sortRun").innerHTML = "Run #";
+            document.getElementById("sortDate").innerHTML = "Date";
+
+            // Add indicator to the sorted column
+            let arrow = sortDir === "asc" ? "▲" : "▼";
+            if (sortBy === "RU") {
+                document.getElementById("sortRU").innerHTML = `RU ${arrow}`;
+            } else if (sortBy === "run_number") {
+                document.getElementById("sortRun").innerHTML = `Run # ${arrow}`;
+            } else if (sortBy === "date") {
+                document.getElementById("sortDate").innerHTML = `Date ${arrow}`;
+            }
+        }
+
+        document.getElementById("sortRU").onclick = function () {
+            if (sortBy === "RU") sortDir = (sortDir === "asc" ? "desc" : "asc");
+            else { sortBy = "RU"; sortDir = "asc"; }
+            updateSortIndicators();
+            updateTable(currentPage);
+        };
+        document.getElementById("sortRun").onclick = function () {
+            if (sortBy === "run_number") sortDir = (sortDir === "asc" ? "desc" : "asc");
+            else { sortBy = "run_number"; sortDir = "asc"; }
+            updateSortIndicators();
+            updateTable(currentPage);
+        };
+        document.getElementById("sortDate").onclick = function () {
+            if (sortBy === "date") sortDir = (sortDir === "asc" ? "desc" : "asc");
+            else { sortBy = "date"; sortDir = "desc"; }
+            updateSortIndicators();
+            updateTable(currentPage);
+        };
+
+        async function updateTable(page = 1) {
+            const checkedIds = new Set(
+                Array.from(document.querySelectorAll(".job-checkbox:checked")).map(cb => cb.value)
+            );
+
+            // Use global filter variables
+            const tray = filterTray;
+            const ru = filterRU;
+            const type = filterType;
+            const dateFrom = filterDateFrom;
+            const dateTo = filterDateTo;
+
+            // Build query string
+            let url = `/status?page=${page}&per_page=${perPage}&sort_by=${sortBy}&sort_dir=${sortDir}`;
+            if (tray) url += `&tray=${encodeURIComponent(tray)}`;
+            if (ru) url += `&ru=${encodeURIComponent(ru)}`;
+            if (type) url += `&type=${encodeURIComponent(type)}`;
+            if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
+            if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`;
+
+            // const res = await fetch(`/status?page=${page}&per_page=${perPage}&sort_by=${sortBy}&sort_dir=${sortDir}`);
+            const res = await fetch(url);
+            const data = await res.json();
+            const tbody = document.querySelector("#statusTable tbody");
+            tbody.innerHTML = "";
+            data.jobs.forEach(row => {
+                let statusEmoji = "⏳", statusColor = "#aaa";
+                if (row.status === "queued") { statusEmoji = "⏳"; statusColor = "#aaa"; }
+                else if (row.status === "processing") { statusEmoji = "🏃"; statusColor = "#3498db"; }
+                else if (row.status === "completed") { statusEmoji = "✅"; statusColor = "#27ae60"; }
+                else if (row.status === "failed") { statusEmoji = "❌"; statusColor = "#e74c3c"; }
+
+                const tr = document.createElement("tr");
+                tr.setAttribute("data-job-id", row.id);
+
+                tr.innerHTML = `
+      <td class="checkbox-cell" style="cursor:pointer;">
+        <input type="checkbox" class="job-checkbox" value="${row.id}">
+      </td>
+      <td>${row.Tray}</td>
+      <td>${row.RU}</td>
+      <td>${row.run_type}</td>
+      <td>${row.run_number}</td>
+      <td>
+        <span style="display:inline-block;padding:0.2em 0.7em;border-radius:1em;background:${statusColor};color:#fff;">
+          ${statusEmoji} ${row.status}
+        </span>
+      </td>
+      <td><a href="/job/${row.id}">Logs</a> <a href="${row.plot_link}">Plots</a></td>
+      <td>${new Date(row.date).toLocaleString()}</td>
+    `;
+                tbody.appendChild(tr);
+            });
+
+            // 2. Restore checked state
+            document.querySelectorAll(".job-checkbox").forEach(cb => {
+                if (checkedIds.has(cb.value)) cb.checked = true;
+            });
+
+            // Make clicking the cell toggle the checkbox
+            tbody.querySelectorAll('.checkbox-cell').forEach(cell => {
+                cell.onclick = function (e) {
+                    if (e.target.tagName !== 'INPUT') {
+                        const checkbox = cell.querySelector('input[type="checkbox"]');
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change'));
+                    }
+                };
+            });
+
+            // Pagination controls with Prev/Next
+            const pagination = document.getElementById("pagination");
+            const totalPages = Math.ceil(data.total / data.per_page);
+            pagination.innerHTML = "";
+
+            // Prev button
+            const prevBtn = document.createElement("button");
+            prevBtn.textContent = "Prev";
+            prevBtn.disabled = (data.page <= 1);
+            prevBtn.onclick = () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    updateTable(currentPage);
+                }
+            };
+            pagination.appendChild(prevBtn);
+
+            // Page buttons
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || Math.abs(i - data.page) <= 2) {
+                    const btn = document.createElement("button");
+                    btn.textContent = i;
+                    btn.disabled = (i === data.page);
+                    btn.onclick = () => {
+                        currentPage = i;
+                        updateTable(i);
+                    };
+                    pagination.appendChild(btn);
+                } else if (
+                    (i === data.page - 3 && i > 1) ||
+                    (i === data.page + 3 && i < totalPages)
+                ) {
+                    const dots = document.createElement("span");
+                    dots.textContent = "...";
+                    pagination.appendChild(dots);
+                }
+            }
+
+            // Next button
+            const nextBtn = document.createElement("button");
+            nextBtn.textContent = "Next";
+            nextBtn.disabled = (data.page >= totalPages);
+            nextBtn.onclick = () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    updateTable(currentPage);
+                }
+            };
+            pagination.appendChild(nextBtn);
+        }
+
+        async function scrollToJob(jobId) {
+            // Find which page the job is on
+            const res = await fetch(`/status?page=1&per_page=9999`); // get all jobs (adjust if too many)
+            const data = await res.json();
+            const idx = data.jobs.findIndex(j => j.id === jobId);
+            if (idx === -1) return;
+            const page = Math.floor(idx / perPage) + 1;
+            currentPage = page;
+            await updateTable(page);
+
+            // Wait for table to render, then scroll to the row
+            setTimeout(() => {
+                const row = document.querySelector(`#statusTable tbody tr[data-job-id="${jobId}"]`);
+                if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+                row?.classList.add("highlight");
+                setTimeout(() => row?.classList.remove("highlight"), 2000);
+            }, 300);
+        }
+
+        // Add this function to update runner status
+        async function updateRunnerStatus() {
+            const res = await fetch(`/status?page=1&per_page=1`);
+            const data = await res.json();
+            // Fetch only the first page, but get the total count of running/queued jobs
+            const resAll = await fetch(`/status?page=1&per_page=9999`);
+            const allData = await resAll.json();
+            const jobs = allData.jobs;
+            const isProcessing = jobs.some(j => j.status === "processing");
+            const jobWaiting = jobs.some(j => j.status === "queued");
+
+            const runnerStatus = document.getElementById("runnerStatus");
+            if (isProcessing) {
+                runnerStatus.innerHTML = 'Runner: <span style="color:#b8860b;">⚡ Processing</span>';
+                runnerStatus.classList.remove("runner-idle");
+                runnerStatus.classList.remove("runner-queued");
+                runnerStatus.classList.add("runner-processing");
+            } else if (!isProcessing && jobWaiting) {
+                runnerStatus.innerHTML = 'Runner: <span style="color:#fff;">⏸️ Paused</span>';
+                runnerStatus.classList.remove("runner-idle");
+                runnerStatus.classList.remove("runner-processing");
+                runnerStatus.classList.add("runner-queued");
+            } else if (!isProcessing && !jobWaiting) {
+                runnerStatus.innerHTML = 'Runner: <span style="color:#218838;">🟢 Idle</span>';
+                runnerStatus.classList.remove("runner-processing");
+                runnerStatus.classList.remove("runner-queued");
+                runnerStatus.classList.add("runner-idle");
+            }
+        }
+
+        // Call updateRunnerStatus periodically (no table update here)
+        setInterval(() => {
+            updateTable(currentPage);
+            updateRunnerStatus();
+        }, 2000);
+
+        // Also call once on load
+        updateTable();
+        fetchTrays();
+        populateFilterSelects();
+        updateRunnerStatus();
+    </script>
+</body>
+
+</html>

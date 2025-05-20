@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register Tray</title>
+    <style>
+        body { font-family: sans-serif; padding: 2em; }
+        .form-row { margin-bottom: 1em; }
+        label { margin-right: 1em; }
+        .result { margin-top: 1em; font-weight: bold; }
+        .navbar {
+            width: 100%;
+            background: #222;
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.7em 1.5em;
+            margin-bottom: 2em;
+            border-radius: 0.4em;
+            box-sizing: border-box;
+        }
+        .nav-title {
+            font-weight: bold;
+            font-size: 1.2em;
+            letter-spacing: 1px;
+        }
+        .runner-status {
+            font-size: 1.1em;
+            font-weight: bold;
+            padding: 0.3em 1em;
+            border-radius: 1em;
+            background: #444;
+            color: #fff;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <span class="nav-title"><a href="/" style="color:inherit;text-decoration:none;">DAQ Automator</a></span>
+        <span>
+            <a href="/register_tray_page" style="color:#ffe066; text-decoration:underline; margin-right:1.5em;">Register Tray</a>
+            <a href="/display_trays_page" style="color:#ffe066; text-decoration:underline; margin-right:1.5em;">Display Trays</a>
+        </span>
+    </div>
+    <h1>Register Tray</h1>
+    <form id="trayForm">
+        <div class="form-row">
+            <label for="label">Tray Label:</label>
+            <input type="text" id="label" name="label" required>
+        </div>
+        <div class="form-row">
+            <span>RUs present:</span>
+            <label><input type="checkbox" name="RU0" checked> RU0</label>
+            <label><input type="checkbox" name="RU1" checked> RU1</label>
+            <label><input type="checkbox" name="RU2" checked> RU2</label>
+            <label><input type="checkbox" name="RU3" checked> RU3</label>
+            <label><input type="checkbox" name="RU4" checked> RU4</label>
+            <label><input type="checkbox" name="RU5" checked> RU5</label>
+        </div>
+        <button type="submit">Register</button>
+    </form>
+    <div class="result" id="result"></div>
+    <script>
+        document.getElementById("trayForm").onsubmit = async function(e) {
+            e.preventDefault();
+            const label = document.getElementById("label").value;
+            const data = {
+                label,
+                RU0: document.querySelector('input[name="RU0"]').checked,
+                RU1: document.querySelector('input[name="RU1"]').checked,
+                RU2: document.querySelector('input[name="RU2"]').checked,
+                RU3: document.querySelector('input[name="RU3"]').checked,
+                RU4: document.querySelector('input[name="RU4"]').checked,
+                RU5: document.querySelector('input[name="RU5"]').checked,
+            };
+            const res = await fetch("/register_tray", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+            const resultDiv = document.getElementById("result");
+            if (res.ok) {
+                const json = await res.json();
+                resultDiv.style.color = "green";
+                resultDiv.textContent = "Tray registered: " + JSON.stringify(json);
+            } else {
+                const err = await res.json();
+                resultDiv.style.color = "red";
+                resultDiv.textContent = "Error: " + (err.detail || "Unknown error");
+            }
+        };
+    </script>
+</body>
+</html>

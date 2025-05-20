@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Registered Trays</title>
+    <style>
+        body { font-family: sans-serif; padding: 2em; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { padding: 0.5em; border: 1px solid #ccc; text-align: center; }
+        th { background: #eee; }
+        .active { background: #d4f8e8; color: #218838; font-weight: bold; }
+        .inactive { background: #f8d7da; color: #721c24; }
+        .navbar {
+            width: 100%;
+            background: #222;
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.7em 1.5em;
+            margin-bottom: 2em;
+            border-radius: 0.4em;
+            box-sizing: border-box;
+        }
+        .nav-title {
+            font-weight: bold;
+            font-size: 1.2em;
+            letter-spacing: 1px;
+        }
+        .runner-status {
+            font-size: 1.1em;
+            font-weight: bold;
+            padding: 0.3em 1em;
+            border-radius: 1em;
+            background: #444;
+            color: #fff;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <span class="nav-title"><a href="/" style="color:inherit;text-decoration:none;">DAQ Automator</a></span>
+        <span>
+            <a href="/register_tray_page" style="color:#ffe066; text-decoration:underline; margin-right:1.5em;">Register Tray</a>
+            <a href="/display_trays_page" style="color:#ffe066; text-decoration:underline; margin-right:1.5em;">Display Trays</a>
+        </span>
+    </div>
+    <h1>Registered Trays</h1>
+    <table id="traysTable">
+        <thead>
+            <tr>
+                <th>Label</th>
+                <th>RU0</th>
+                <th>RU1</th>
+                <th>RU2</th>
+                <th>RU3</th>
+                <th>RU4</th>
+                <th>RU5</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Rows will be populated by JS -->
+        </tbody>
+    </table>
+    <script>
+        async function fetchTrays() {
+            const res = await fetch("/api/trays");
+            const trays = await res.json();
+            const tbody = document.querySelector("#traysTable tbody");
+            tbody.innerHTML = "";
+            trays.forEach(tray => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${tray.label}</td>
+                    <td class="${tray.RU0 ? 'active' : 'inactive'}">${tray.RU0 ? "✔" : "✗"}</td>
+                    <td class="${tray.RU1 ? 'active' : 'inactive'}">${tray.RU1 ? "✔" : "✗"}</td>
+                    <td class="${tray.RU2 ? 'active' : 'inactive'}">${tray.RU2 ? "✔" : "✗"}</td>
+                    <td class="${tray.RU3 ? 'active' : 'inactive'}">${tray.RU3 ? "✔" : "✗"}</td>
+                    <td class="${tray.RU4 ? 'active' : 'inactive'}">${tray.RU4 ? "✔" : "✗"}</td>
+                    <td class="${tray.RU5 ? 'active' : 'inactive'}">${tray.RU5 ? "✔" : "✗"}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        fetchTrays();
+    </script>
+</body>
+</html>
